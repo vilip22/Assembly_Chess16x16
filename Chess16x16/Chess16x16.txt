@@ -1,0 +1,889 @@
+; +--------------------------------------------------------------------------------------------------+
+; | Welcome to 16-bit Assembly Chess!                                                                |
+; | Author: Vili Perše              				                                                 |
+; | Version: 0.5                                                               					     |
+; | Date: 28.5.2021                                                                 			     |
+; +--------------------------------------------------------------------------------------------------+
+; | Output:																						     |
+; | 	The output features a 16x16 pixel display grid. Because of the limitations, chess pieces     |
+; | 	have to be sprites of size 2x2 to fit the screen.										     |
+; |																								     |
+; | Sprites (b - black, w - white, 0 - empty):											             |
+; |																								     |
+; | 	0w 				 		00																     |
+; |		00 = white pawn			b0 = black pawn													     |
+; |																								     |
+; | 	00						bb																     |
+; |		ww = white rook 		00 = black rook													     |
+; |																								     |
+; | 	w0						bb																     |
+; |		ww = white horse		0b = black horse 												     |
+; |																								     |
+; | 	w0						b0																     |
+; |		0w = white bishop		0b = black bishop                                                    |
+; |                                                                                                  |
+; | 	ww						0b 															   	     |
+; |		w0 = white queen 		bb = black queen                                                     |
+; |																									 |
+; | 	ww						bb																	 |
+; |		ww = white king 		bb = black king														 |
+; |																									 |
+; | Input:																							 |
+; | 	Input includes a keyboard with which you can write your moves.								 |
+; |		To backspace a character press 'x'. To reset input press 'z'.   						     |
+; |		To submit input press 'ENTER'.																 |
+; |																									 |
+; | 	Acceptable inputs:																			 |
+; |			"reset" - resets the game																 |
+; | 		"undo" - undoes last move (1 move memory)                                                |
+; |			"draw" - draws the game																	 |
+; | 		"forfeit" - forfeits the game															 |
+; |			"0-0-0" - long castle																	 |
+; | 		"0-0" - normal castle																	 |
+; |			[a]'-'[b][c] - standard move: a - from position (a..h1..8)								 |
+; |										b - to position (a..h1..8)									 |
+; |										c - special move: '*' - en passant							 |
+; |	`													  '#' - checkmate							 |
+; | 									  				  '='[d] - promotion: 'Q' - to queen		 |
+; |																			  'R' - to rook			 |
+; |																			  'B' - to bishop		 |
+; | 																		  'N' - to knight		 |
+; |																									 |
+; |		Any other format will output "Illegal Move!" to the output characters field.   			     |
+; |																									 |
+; | Game:																							 |
+; | 	Standrad chess rules apply. However this game is played similarly like it would've been      |
+; | 	played in real life as it relies on players to make legal moves and does not check for them  |
+; | 	automatically. Players must also declare a win with a checkmating move or call a  			 |
+; | 	draw / forfeit if they wish to end the game.												 |
+; +--------------------------------------------------------------------------------------------------+
+
+JMP main ; Start program
+
+; ------------------------------------------- Variables -------------------------------------------- ;
+
+whiteMoveS:
+	DB "White's move:"
+    DB 0
+    
+blackMoveS:
+	DB "Black's move:"
+    DB 0
+
+whiteWinsS:
+	DB "White Wins!"
+    DB 0
+    
+blackWinsS:
+	DB "Black Wins!"
+    DB 0
+
+drawOutS:
+	DB "It's a Draw!"
+    DB 0
+
+resetS:
+	DB "reset"
+    DB 0
+
+undoS:
+	DB "undo"
+    DB 0 
+     
+drawInS:
+	DB "draw"
+    DB 0
+    
+forfeitS:
+	DB "forfeit"
+    DB 0
+
+longCastleS:
+	DB "0-0-0"
+    DB 0
+
+castleS:
+	DB "0-0"
+    DB 0
+   
+illegalMoveS:
+	DB "Illegal move!"
+    DB 0
+
+turnB:
+	DB 0x00
+    
+copyTurnB:
+	DB 0x00
+
+; ------------------------------------------- Functions -------------------------------------------- ;
+
+; function set_board()
+; desc: Sets up board with starting positions.
+; parameters: -
+; return value: -
+set_board:
+    PUSH D ; save original D value
+	MOV D, 0x0d00 ; board data address
+    MOV [D], 0x0001 ; black rook
+    ADD D, 2
+    MOV [D], 0x0002 ; black knight
+    ADD D, 2
+    MOV [D], 0x0003 ; black bishop
+    ADD D, 2
+    MOV [D], 0x0004 ; black queen
+    ADD D, 2
+    MOV [D], 0x0005 ; black king
+    ADD D, 2
+    MOV [D], 0x0003 ; black bishop
+    ADD D, 2
+    MOV [D], 0x0002 ; black knight
+    ADD D, 2
+    MOV [D], 0x0001 ; black rook
+    ADD D, 2
+    set_black_pawns:
+        CMP D, 0x0d20 ; if >= 6th rank
+        JAE end_black_pawns
+        MOV [D], 0x0006 ; black pawn
+    	ADD D, 2
+        JMP set_black_pawns
+    end_black_pawns:
+    set_empty_space:
+    	CMP D, 0x0d60 ; if >= 2nd rank
+        JAE end_empty_space
+        MOV [D], 0 ; empty field
+        ADD D, 2
+        JMP set_empty_space
+    end_empty_space:
+    set_white_pawns:
+    	CMP D, 0x0d70 ; if >= 1st rank
+        JAE end_white_pawns
+        MOV [D], 0xff06 ; white pawn
+    	ADD D, 2
+        JMP set_white_pawns
+    end_white_pawns:
+    MOV [D], 0xff01 ; white rook
+    ADD D, 2
+    MOV [D], 0xff02 ; white knight
+    ADD D, 2
+    MOV [D], 0xff03 ; white bishop
+    ADD D, 2
+    MOV [D], 0xff04 ; white queen
+    ADD D, 2
+    MOV [D], 0xff05 ; white king
+    ADD D, 2
+    MOV [D], 0xff03 ; white bishop
+    ADD D, 2
+    MOV [D], 0xff02 ; white knight
+    ADD D, 2
+    MOV [D], 0xff01 ; white rook
+    MOVB [turnB], 0 
+    POP D ; get original D value
+    RET
+   
+; function copy_board(o, c)
+; desc: Copies 'o' board to 'c' board.
+; parameters:
+; 	o - original board. Received in C.
+; 	c - copy board. Received in D.
+; return value: -
+copy_board:
+	PUSH A ; save original A value	
+	PUSH B ; save original B value
+    CMP C, 0x0d00 ; board data address
+    JNE copy_original_turn
+    	; copy copied turn
+    	MOVB AL, [turnB]
+    	MOVB [copyTurnB], AL
+        JMP end_copy_turn
+    copy_original_turn:
+    	MOVB AL, [copyTurnB]
+    	MOVB [turnB], AL
+    end_copy_turn:
+    MOV A, D
+    ADD A, 0x0080 ; add board data length
+    copy_cell:
+    	CMP D, A ; if = end of board
+        JAE return_copy
+        MOV B, [C]
+        MOV [D], B ; copy 2 bytes
+        ; next 2 bytes
+        ADD D, 2
+        ADD C, 2
+        JMP copy_cell
+    return_copy:
+        POP B ; get original B value
+        POP A ; get original A value	
+    	RET
+
+; function draw_board()
+; desc: Draw's board using board data.
+; parameters: -
+; return value: -
+draw_board:
+	PUSH A ; save original A value
+    PUSH B ; save original B value
+    PUSH D ; save original D value
+	MOV A, 0 ; white/black alt flag
+	MOV D, 0x0f00 ; display screen address
+	draw_back_board:
+    	CMP D, 0x1000 ; if = end of display screen
+        JE end_draw_back_board
+        MOV B, D
+        ADD B, 0x0020
+        CMP A, 0 ; if black/white alt
+        JNE alt_white_black
+        alt_black_white:
+        	CMP D, B ; if = end of line
+            JE end_alt
+            MOV [D], 0x8888 ; color pixels brown
+            ADD D, 2
+            MOV [D], 0xfafa ; color pixels beige
+            ADD D, 2
+            JMP alt_black_white
+        alt_white_black:
+        	CMP D, B ; if = end of line
+            JE end_alt
+            MOV [D], 0xfafa ; color pixels beige
+            ADD D, 2
+            MOV [D], 0x8888 ; color pixels brown
+            ADD D, 2
+            JMP alt_white_black
+        end_alt:
+        	ADD A, 0x8000 ; switch alt flag
+    	JMP draw_back_board
+	end_draw_back_board:
+    MOV D, 0x0d00 ; board data address
+    MOV B, 0
+    MOV A, 0
+    draw_pieces:
+    	CMP D, 0x0d80 ; if = end of board data
+        JE end_draw_pieces
+        MOV C, [D] ; draw piece at D address
+        CALL draw_piece
+        ADD D, 2
+        ADD B, 2
+        CMP B, 16 ; if < end of line
+        JB draw_pieces
+        MOV B, 0
+        ADD A, 0x20
+        JMP draw_pieces
+    end_draw_pieces:
+    	POP D ; get original D value
+        POP B ; get original B value
+        POP A ; get original A value
+    	RET
+        
+; function draw_piece(x, y, p)
+; desc: Draws 'p' piece at given coordinate offsets.
+; parameters:
+;	x - x offset. Received in A.
+;	y - y offset. Received in B.
+; 	p - piece data. Received in C.
+; return value: -
+draw_piece:
+	PUSH D ; save original D value
+    MOV D, 0x0f00 ; display screen address
+    ; add offsets
+    ADD D, A
+    ADD D, B
+    ; CH - 0xff: white figure
+    ;	 - 0x00: black figure
+    ; CL - 0x01: rook
+    ;	 - 0x02: knight
+    ;	 - 0x03: bishop
+    ;	 - 0x04: queen
+    ;	 - 0x05: king
+    ;	 - 0x06: pawn
+    CMPB CL, 0x01
+    JE draw_rook
+    CMPB CL, 0x02
+    JE draw_knight
+    CMPB CL, 0x03
+    JE draw_bishop
+    CMPB CL, 0x04
+    JE draw_queen
+    CMPB CL, 0x05
+    JE draw_king
+    CMPB CL, 0x06
+    JE draw_pawn
+    JMP return_piece
+    draw_rook:
+		CMPB CH, 0x00
+        JE draw_black_rook
+        	ADD D, 0x10
+            MOV [D], 0xffff
+            JMP return_piece
+        draw_black_rook:
+            MOV [D], 0x0000
+            JMP return_piece
+    draw_knight:
+    	CMPB CH, 0x00
+        JE draw_black_knight
+        	MOVB [D], 0xff
+        	ADD D, 0x10
+            MOV [D], 0xffff
+            JMP return_piece
+        draw_black_knight:
+            MOV [D], 0x0000
+            ADD D, 0x11
+            MOVB [D], 0x00
+            JMP return_piece  
+    draw_bishop:
+        MOVB [D], CH
+        ADD D, 0x11
+        MOVB [D], CH
+        JMP return_piece
+    draw_queen:
+    	CMPB CH, 0x00
+        JE draw_black_queen
+            MOV [D], 0xffff
+            ADD D, 0x10
+            MOVB [D], 0xff
+            JMP return_piece
+        draw_black_queen:
+        	INC D
+            MOVB [D], 0x00
+            ADD D, 0xf
+            MOV [D], 0x0000
+            JMP return_piece
+    draw_king:
+    	MOVB [D], CH
+        INC D
+        MOVB [D], CH
+        ADD D, 0xf
+        MOVB [D], CH
+        INC D
+        MOVB [D], CH
+        JMP return_piece       
+    draw_pawn:
+        CMPB CH, 0x00
+        JE draw_black_pawn
+        	INC D
+            MOVB [D], 0xff
+            JMP return_piece
+        draw_black_pawn:
+        	ADD D, 0x10
+            MOVB [D], 0x00
+            JMP return_piece
+	return_piece:
+        POP D ; get original D value
+        RET
+
+; function alt_turn()
+; desc: Alternates turn between white and black.
+; parameters: -
+; return value: -
+alt_turn:
+	MOVB AL, [turnB]
+    ADDB AL, 0x80
+    MOVB [turnB], AL
+	RET
+
+; function move_piece(a, b)
+; desc: Moves piece from position 'a' to position 'b'.
+; parameters:
+; 	a - from position offset. Received in A.
+; 	b - to position offset. Received in B.
+move_piece:
+	PUSH C ; save original C value
+    PUSH D ; save original D value
+    ; set location to board data address
+	MOV C, 0x0d00
+    MOV D, 0x0d00
+    ; add position offsets
+    ADD C, A
+    ADD D, B
+    MOV A, [C]
+    MOV [C], 0 ; set current position to empty
+    MOV [D], A ; copy piece to new position
+    POP D ; get original D value
+    POP C ; get original C value
+    RET
+
+; function en_passant(a)
+; desc: Deletes piece above/below position 'a' simulating en passant move.
+; parameters:
+; 	a - piece position offset. Received in B.
+; return value: -
+en_passant:
+    PUSH A ; save original A value
+    PUSH D ; save original D value
+    MOV D, 0x0d00 ; board data address
+    ADD D, B ; add position offset
+    MOVB AL, [turnB] ; get turn data
+   	CMPB AL, 0 ; if = white turn
+    JE white_en_passant
+		CMP D, 0x0d0f ; if <= 8th rank
+        JBE return_en_passant
+        SUB D, 0x10 ; move up 1 rank
+        MOV [D], 0 ; set position to empty
+        JMP return_en_passant
+    white_en_passant:
+        CMP D, 0x0d70 ; if >= 1st rank
+        JAE return_en_passant
+        ADD D, 0x10 ; move down 1 rank
+        MOV [D], 0 ; set position to empty
+    return_en_passant:
+    	POP D ; get original D value
+        POP A ; get original A value
+    	RET
+
+; function promotion(a, p)
+; desc: Promote piece at position 'a' to piece 'p'.
+; parameters:
+; 	a - piece position offset. Received in B.
+; 	p - promotion piece. Received in CL.
+; return value: -
+promotion:
+    PUSH A ; save original A value
+    PUSH D ; save original D value
+    MOV A, 0
+    MOVB AL, [turnB] ; get turn data
+    CMPB AL, 0 ; if != white turn
+    JNE continue_promotion
+    	MOVB AH, 0xff ; set piece to white
+    continue_promotion:
+	MOVB AL, CL ; set piece type
+    MOV D, 0x0d00 ; board data address
+    ADD D, B ; add position offset
+    MOV [D], A ; promote piece
+    POP D ; get original D value
+    POP A ; get original A value
+    RET
+    
+; function long_castle()
+; desc: Swaps positions of king's and left rook's starting positions simulating long castling.
+; parameters: -
+; return value: -
+long_castle:
+    PUSH A ; save original A value
+    PUSH D ; save original D value
+    MOVB AL, [turnB] ; get turn data
+    CMPB AL, 0 ; if = white
+    JE white_long_castle
+    	MOV [0x0d00], 0
+        MOV [0x0d04], 0x0005 ; castle black king
+        MOV [0x0d06], 0x0001 ; castle black rook
+        MOV [0x0d08], 0
+        JMP return_long_castle
+    white_long_castle:
+    	MOV [0x0d70], 0
+        MOV [0x0d74], 0xff05 ; castle white king
+        MOV [0x0d76], 0xff01 ; castle white rook
+        MOV [0x0d78], 0
+    return_long_castle:
+    	POP D ; get original D value
+        POP A ; get original A value
+    	RET
+        
+; function castle()
+; desc: Swaps positions of king's and right rook's starting positions simulating castling.
+; parameters: -
+; return value: -
+castle:
+    PUSH A ; save original A value
+    PUSH D ; save original D value
+    MOVB AL, [turnB] ; get turn data
+    CMPB AL, 0 ; if = white
+    JE white_castle
+    	MOV [0x0d08], 0
+        MOV [0x0d0a], 0x0001 ; castle black rook
+        MOV [0x0d0c], 0x0005 ; castle black king
+        MOV [0x0d0e], 0
+        JMP return_castle
+    white_castle:
+    	MOV [0x0d78], 0
+        MOV [0x0d7a], 0xff01 ; castle white rook
+        MOV [0x0d7c], 0xff05 ; castle white king
+        MOV [0x0d7e], 0
+    return_castle:
+    	POP D ; get original D value
+        POP A ; get original A value
+    	RET
+        
+; function read_input()
+; desc: Read input through keyboard and writes it to character disaply until 'ENTER' is pressed.
+; parameters: -
+; return value: -
+read_input:
+	PUSH A ; save original A value
+    PUSH C ; save original C value
+    PUSH D ; save original D value
+	MOV C, 0x0ef0 ; output address
+    read_first_char:
+    	IN 5 ; take kpstatus
+        CMP A, 0 ; if character was not pressed
+        JE read_first_char ; loop back
+        MOV D, 0x0ef0
+        CALL clear_row ; empty input field
+        JMP write_char
+	read_char:
+		IN 5 ; take kpstatus
+        CMP A, 0 ; if character was not pressed
+        JE read_char ; loop back
+    write_char:
+    	IN 6 ; take kpdata
+        CMPB AL, 0x0d ; if pressed 'ENTER'
+        JE return_input
+        CMPB AL, 'x' ; if pressed 'x'
+        JE delete_char
+        CMPB AL, 'z' ; if pressed 'z'
+        JE reset_input
+    	CMP C, 0x0f00 ; higher input bound
+        JE read_char
+    	MOVB [C], AL ; write character to input
+        INC C ; increase input pointer
+        JMP read_char
+    delete_char:
+    	CMP C, 0x0ef0 ; lower input bound
+        JE read_char
+        DEC C ; decrease input pointer
+    	MOVB [C], 0 ; delete character
+        JMP read_char
+    reset_input:
+    	MOV D, 0x0ef0
+        CALL clear_row ; empty input field
+        MOV C, 0x0ef0 ; reset input pointer
+        JMP read_char
+	return_input:
+    	POP D ; get original D value
+        POP C ; get original C value
+    	POP A ; get original A value
+		CALL evaluate_input
+    	RET
+
+; function clear_row(r)
+; desc: Clears row at address 'r'.
+; parameters:
+; 	r - row address. Received in D.
+; return value: -
+clear_row:
+	PUSH B ; save original B value
+    PUSH D ; save original B value
+	MOV B, D
+    ADD B, 0x10 ; add row length
+    clear_char:
+    	CMP D, B ; if = end of row
+        JAE return_clear_row
+        MOV [D], 0 ; empty 2 bytes
+        ADD D, 2 ; next 2 bytes
+        JMP clear_char
+    return_clear_row:
+        POP D ; get original D value
+        POP B ; get original B value
+    	RET
+
+; function evaluate_input()
+; parameters: -
+; return value: -
+evaluate_input:
+    PUSH A ; save original A value
+    PUSH B ; save original B value
+    PUSH C ; save original C value
+    PUSH D ; save original D value
+    MOV D, 0x0ef0 ; input address
+    MOV A, 0 ; clear A
+    MOV B, 0 ; clear B
+	; if input == "reset"
+        MOV C, resetS
+        CALL compare_string
+        CMP A, 1
+        JE call_reset:
+    ; else if input == "undo"
+        MOV C, undoS
+        CALL compare_string
+        CMP A, 1
+        JE call_undo:
+    ; else if input == "draw"
+        MOV C, drawInS
+        CALL compare_string
+        CMP A, 1
+        JE call_draw:
+    ; else if input == "forfeit"
+        MOV C, forfeitS
+        CALL compare_string
+        CMP A, 1
+        JE call_forfeit:
+    ; else if input == "0-0-0"
+        MOV C, longCastleS
+        CALL compare_string
+        CMP A, 1
+        JE call_long_castle:
+    ; else if input == "0-0"
+        MOV C, castleS
+        CALL compare_string
+        CMP A, 1
+        JE call_castle:
+    ; else
+    	MOV C, 0 ; clear C
+        ; get a_offset:
+            MOVB BL, [D] ; save char in BL
+            ; validate x position
+            CMPB BL, 'a'
+            JB illegal_move
+            CMPB BL, 'h'
+            JA illegal_move
+            SUB B, 'a' ; remove ascii value
+            INC D ; next char
+            MOVB CL, [D] ; save char in CL
+            ; validate y position
+            CMPB CL, '1'
+            JB illegal_move
+            CMPB CL, '8'
+            JA illegal_move
+            SUB C, '1' ; remove ascii value
+            ; inverse field
+            MOV A, 7
+            SUB A, C
+            SHL A, 4 ; add y offset
+            ; add x offset
+            ADD A, B
+            ADD A, B
+            PUSH A ; save a_offset
+        ; position break
+            INC D ; next char
+            MOVB BL, [D] ; save char in BL
+            CMPB BL, '-'
+            JNE illegal_move
+        ; get b_offset:
+            INC D
+            MOVB BL, [D] ; save char in BL
+            ; validate x position
+            CMPB BL, 'a'
+            JB illegal_move
+            CMPB BL, 'h'
+            JA illegal_move
+            SUB B, 'a' ; remove ascii value
+            INC D ; next char
+            MOVB CL, [D] ; save char in CL
+            ; validate y position
+            CMPB CL, '1'
+            JB illegal_move
+            CMPB CL, '8'
+            JA illegal_move
+            SUB C, '1' ; remove ascii value
+            ; inverse y position
+            MOV A, 7
+            SUB A, C
+            SHL A, 4 ; add y offset
+            ; add x offset
+            ADD A, B
+            ADD A, B
+            PUSH A ; save b_offset
+            POP B ; get b_offset
+            POP A ; get a_offset
+        ; evaluate special move
+            INC D ; next char
+            MOVB CL, [D] ; save char in CL
+            CMPB CL, '#' ; if checkmate
+            JE call_checkmate
+            CMPB CL, '*' ; if en passant
+            JE call_en_passant
+            CMPB CL, '=' ; if promotion
+            JE call_promotion
+            CMPB CL, 0 ; if standard move
+            JE call_std_move
+            JMP illegal_move ; else
+	call_reset:
+        MOV D, 0x0ef0
+    	CALL clear_row
+        MOV C, 0x0d00
+    	MOV D, 0x0d80
+    	CALL copy_board ; save current board state
+    	CALL main
+    call_undo:
+    	MOV D, 0x0ef0
+    	CALL clear_row
+    	MOV D, 0x0d00
+        MOV C, 0x0d80
+        CALL copy_board
+    	JMP return_evaluation
+    call_draw:
+    	MOV D, 0x0ef0
+    	CALL clear_row
+    	MOV D, 0x0ee0
+        CALL clear_row
+        MOV C, drawOutS
+        CALL print_string
+    	HLT
+    call_forfeit:
+        MOV D, 0x0ef0
+    	CALL clear_row
+        MOVB AL, [turnB]
+        CMPB AL, 0
+        JE black_wins:
+        white_wins:
+        	MOV D, 0x0ee0
+        	CALL clear_row
+        	MOV C, whiteWinsS
+        	CALL print_string
+    		HLT
+        black_wins:
+        	MOV D, 0x0ee0
+        	CALL clear_row
+        	MOV C, blackWinsS
+        	CALL print_string
+    		HLT
+    call_long_castle:
+    	MOV C, 0x0d00
+        MOV D, 0x0d80
+    	CALL copy_board
+    	CALL long_castle
+        CALL alt_turn
+    	JMP return_evaluation
+    call_castle:
+    	MOV C, 0x0d00
+        MOV D, 0x0d80
+    	CALL copy_board
+    	CALL castle
+        CALL alt_turn
+    	JMP return_evaluation
+    call_checkmate:
+    	CALL move_piece
+        CALL draw_board
+    	MOV D, 0x0ef0
+    	CALL clear_row
+        MOVB AL, [turnB]
+        CMPB AL, 0
+        JE white_wins
+        JMP black_wins
+    call_en_passant:
+    	MOV C, 0x0d00
+        MOV D, 0x0d80
+    	CALL copy_board
+    	CALL move_piece
+    	CALL en_passant
+        CALL alt_turn
+    	JMP return_evaluation
+    call_promotion:
+    	PUSH D
+        MOV C, 0x0d00
+        MOV D, 0x0d80
+    	CALL copy_board
+    	CALL move_piece
+        POP D
+    	INC D
+        MOVB DL, [D]
+        CMPB DL, 'Q'
+        JE promote_queen
+        CMPB DL, 'R'
+        JE promote_rook
+        CMPB DL, 'B'
+        JE promote_bishop
+        CMPB DL, 'N'
+        JE promote_knight
+        JMP illegal_move
+        promote_queen:
+        	MOV C, 0x0004
+            JMP continue_call_promotion
+        promote_rook:
+        	MOV C, 0x0001
+            JMP continue_call_promotion
+        promote_bishop:
+        	MOV C, 0x0003
+            JMP continue_call_promotion
+        promote_knight:
+        	MOV C, 0x0002
+        continue_call_promotion:
+        	CALL promotion
+        CALL alt_turn
+    	JMP return_evaluation
+    call_std_move:
+    	MOV C, 0x0d00
+    	MOV D, 0x0d80
+    	CALL copy_board
+    	CALL move_piece
+        CALL alt_turn
+    	JMP return_evaluation
+    illegal_move:
+    	MOV D, 0x0ef0
+        CALL clear_row
+    	MOV C, illegalMoveS
+        CALL print_string
+        MOV SP, 0x0edd
+        JMP read_input
+    return_evaluation:
+    	MOV D, 0x0ef0
+    	CALL clear_row
+    	POP D ; get original D value
+        POP C ; get original C value
+        POP B ; get original B value
+        POP A ; get original A value
+        CALL draw_board
+        RET
+        
+; function compare_string(s)
+; desc: Compares string 's' with input string and asserts if equal.
+; parameters:
+;	s - string to compare. Received in C address, 0 terminated.
+; return value:
+;	bool - are strings equal. Passed in A, 1 = true, 0 = false. 
+compare_string:
+	PUSH D ; save original D value
+    MOV D, 0x0ef0 ; input address
+	compare_char:
+		MOVB AL, [C]
+      	CMPB AL, 0
+      	JE return_equal: ; if all characters are equal
+        MOVB BL, [D]
+     	CMPB AL, BL
+        JNE return_not_equal: ; if any character differs
+     	INC C
+     	INC D
+     	JMP compare_char
+    return_equal:
+    	POP D ; get original D value
+    	MOV A, 1 ; set equal flag to true
+    	RET
+    return_not_equal:
+    	POP D ; get original D value
+    	MOV A, 0 ; set equal flag to false
+        RET
+
+; function print_string(s, d)
+; desc: Prints string 's' to address 'd'.
+; parameters:
+; 	s - string to print. Received in C address, 0 terminated.
+;	d - print location. Received in D.
+; return value: -
+print_string:
+    MOVB AL, [C]
+    CMPB AL, 0 ; if end of string
+    JE return_string:
+    MOVB [D], AL ; write character to address
+    ; increase address and string pointer
+    INC C
+    INC D
+	JMP print_string
+	return_string:
+    	RET    
+
+; function main()
+; desc: sets up program and contains main game loop
+; parameters: -
+; return value: -
+main:
+	MOV SP, 0x0edf
+    CALL set_board
+    CALL draw_board
+    get_input:
+    	MOVB AH, [turnB]
+    	CMPB AH, 0
+        JE print_white_turn
+        	MOV C, blackMoveS
+          	MOV D, 0x0ee0
+            CALL clear_row
+            CALL print_string
+            JMP continue_read
+        print_white_turn:
+            MOV C, whiteMoveS
+          	MOV D, 0x0ee0
+            CALL clear_row
+          	CALL print_string
+        continue_read:
+    	CALL read_input
+        JMP get_input
+    HLT
+    
+    
